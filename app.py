@@ -53,7 +53,8 @@ def recommend_movies(user_id, history_df, favorite_df, k=1):
     recommended_movies = set()
     for similar_user in similar_users:
         user_favorites = favorite_df[favorite_df["userId"] == similar_user][["slug", "name"]].to_records(index=False)
-        recommended_movies.update(user_favorites)
+        recommended_movies.update((row.slug, row.name) for row in user_favorites)
+
 
     watched_movies = history_df[history_df["userId"] == user_id]["slug"].tolist()
     favorite_movies = favorite_df[favorite_df["userId"] == user_id]["slug"].tolist()
