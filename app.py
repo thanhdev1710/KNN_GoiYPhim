@@ -11,21 +11,19 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Tạo ứng dụng Flask
 app = Flask(__name__)
-
-# Thêm CORS với tất cả nguồn gốc
 CORS(app)
 
 # Hàm lấy dữ liệu từ Supabase
 def fetch_data():
     """
-    Lấy dữ liệu từ bảng `watch_history` và `favorite_movies` trong Supabase.
+    Lấy dữ liệu từ bảng `movieViewingHistory` và `listMovieFavorite` trong Supabase.
     """
-    # Lấy lịch sử xem phim
-    watch_history = supabase.table("movieViewingHistory").select("userId, slug").execute()
+    # Lấy lịch sử xem phim (thêm cột `name`)
+    watch_history = supabase.table("movieViewingHistory").select("userId, slug, name").execute()
     history_df = pd.DataFrame(watch_history.data)
 
-    # Lấy danh sách phim yêu thích
-    favorite_movies = supabase.table("listMovieFavorite").select("userId, slug").execute()
+    # Lấy danh sách phim yêu thích (thêm cột `name`)
+    favorite_movies = supabase.table("listMovieFavorite").select("userId, slug, name").execute()
     favorite_df = pd.DataFrame(favorite_movies.data)
 
     return history_df, favorite_df
@@ -40,7 +38,7 @@ def recommend_movies(user_id, history_df, favorite_df, k=1):
         favorite_df (DataFrame): Dữ liệu phim yêu thích.
         k (int): Số người dùng gần nhất để so sánh.
     Returns:
-        list: Danh sách các slug của phim được gợi ý.
+        list: Danh sách các đối tượng {slug: ..., name: ...} của phim được gợi ý.
     """
     user_movie_matrix = history_df.pivot_table(index="userId", columns="slug", aggfunc="size", fill_value=0)
 
@@ -54,14 +52,18 @@ def recommend_movies(user_id, history_df, favorite_df, k=1):
 
     recommended_movies = set()
     for similar_user in similar_users:
-        user_favorites = favorite_df[favorite_df["userId"] == similar_user]["slug"].tolist()
+        user_favorites = favorite_df[favorite_df["userId"] == similar_user][["slug", "name"]].to_records(index=False)
         recommended_movies.update(user_favorites)
 
     watched_movies = history_df[history_df["userId"] == user_id]["slug"].tolist()
     favorite_movies = favorite_df[favorite_df["userId"] == user_id]["slug"].tolist()
 
     excluded_movies = set(watched_movies + favorite_movies)
-    final_recommendations = list(recommended_movies - excluded_movies)
+    final_recommendations = [
+        {"slug": slug, "name": name}
+        for slug, name in recommended_movies
+        if slug not in excluded_movies
+    ]
 
     return final_recommendations
 
@@ -69,7 +71,7 @@ def recommend_movies(user_id, history_df, favorite_df, k=1):
 @app.route('/recommend', methods=['GET'])
 def recommend():
     """
-    API nhận `user_id` qua query string và trả về danh sách các slug của phim được gợi ý.
+    API nhận `user_id` qua query string và trả về danh sách các đối tượng {slug: ..., name: ...} của phim được gợi ý.
     """
     try:
         user_id = request.args.get("user_id", type=int)
